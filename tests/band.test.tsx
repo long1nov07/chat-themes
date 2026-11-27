@@ -70,3 +70,15 @@ test('the backdrop draws the chosen scene as an Svg', async ($, on) => {
   expect(svg).toBeDefined()
   await ui.unmount()
 })
+
+test('the band hints at the apps only where backdrops cannot draw', async ($, on) => {
+  engine(on, [])
+
+  const desktop = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await desktop.find({ type: 'Text', text: /chỉ hiện trong app/ })).toBeUndefined()
+  await desktop.unmount()
+
+  const terminal = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await terminal.find({ type: 'Text', text: /chỉ hiện trong app/ }))?.text).toContain('desktop')
+  await terminal.unmount()
+})

@@ -10,7 +10,6 @@ const OLD_PANE = 'chat-themes'
 const STORE_KEY = 'scene'
 
 const current = atom({ plugin: 'chat-themes', key: 'current' } as const, 'off')
-const note = atom({ plugin: 'chat-themes', key: 'note' } as const, null)
 
 type Entry = {
   id: SceneId
@@ -132,10 +131,10 @@ const apply = async ($: EngineInterface, choice: Choice) => {
   if (entry === undefined) {
     // Off: clear only because the person pressed it.
     await $.theme.clear()
-    await update($, note, () => null)
   } else {
-    const set = await $.theme.set(entry.look)
-    await update($, note, () => (set.isDrawn ? null : set.reason))
+    // Not drawn yet only means no app is attached now; the theme stands and
+    // draws once one attaches.
+    await $.theme.set(entry.look)
   }
   await update($, current, () => choice)
   await $.store.set(STORE_KEY, choice)
@@ -155,9 +154,8 @@ export const register: Register = on => {
 
     if (isScene(saved)) {
       const entry = THEMES.find(t => t.id === saved)!
-      const set = await $.theme.set(entry.look)
+      await $.theme.set(entry.look)
       await update($, current, () => saved)
-      await update($, note, () => (set.isDrawn ? null : set.reason))
     }
 
     return next(e)
@@ -183,7 +181,7 @@ export const register: Register = on => {
 
     const { Box, Text, Button } = $.ui.resolve(e)
     const chosen = await read($, current)
-    const why = await read($, note)
+    const drawsBackdrops = e.surface === 'desktop' || e.surface === 'mobile'
 
     return (
       <Box flexDirection="column">
@@ -205,7 +203,7 @@ export const register: Register = on => {
             onPress={() => apply($, 'off')}
           />
         </Box>
-        {why !== null && <Text dimColor>Bề mặt này không vẽ hình nền: {why}</Text>}
+        {!drawsBackdrops && <Text dimColor>Hình nền chỉ hiện trong app desktop và mobile.</Text>}
       </Box>
     )
   })

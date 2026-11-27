@@ -5,7 +5,6 @@ declare module 'claude-code' {
   interface PluginState {
     'chat-themes': {
       current: Choice
-      note: string | null
     }
   }
 }
