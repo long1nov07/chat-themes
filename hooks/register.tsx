@@ -3,7 +3,7 @@ import type { EngineInterface, Register, ThemeSetArgs } from 'claude-code'
 
 import type { Choice, SceneId } from '../types'
 import { makeColors } from './make-colors.js'
-import { SCENES } from './scenes'
+import { scene } from './scenes'
 
 const PLUGIN = 'chat-themes'
 const OLD_PANE = 'chat-themes'
@@ -17,20 +17,26 @@ type Entry = {
   name: string
   blurb: string
   preview: string[]
-  look: ThemeSetArgs
+  look: () => ThemeSetArgs
 }
 
+// A theme's look, worked out the first time it is used: makeColors is the
+// costly part, and a session needs one theme, not all of them.
 const look = (
   id: SceneId,
   label: string,
   tint: string,
   roles: { accent: string; danger: string; success: string; warning: string; pro: string },
   anchors: Record<'surface-0' | 'surface-1' | 'surface-2' | 'surface-3' | 'text-primary' | 'text-secondary' | 'text-muted', string>,
-): ThemeSetArgs => ({
-  colors: makeColors({ label, id, only: 'dark', roles, dark: { gray: { anchors } } }).theme,
-  backdrop: { scene: id, glass: { blur: 12, tint, opacity: 0.55 } },
-  overrideColorScheme: 'dark',
-})
+): (() => ThemeSetArgs) => {
+  let made: ThemeSetArgs | undefined
+  return () =>
+    (made ??= {
+      colors: makeColors({ label, id, only: 'dark', roles, dark: { gray: { anchors } } }).theme,
+      backdrop: { scene: id, glass: { blur: 12, tint, opacity: 0.55 } },
+      overrideColorScheme: 'dark',
+    })
+}
 
 const THEMES: Entry[] = [
   {
@@ -123,39 +129,38 @@ const THEMES: Entry[] = [
   },
 ]
 
-const isScene = (v: unknown): v is SceneId => THEMES.some(t => t.id === v)
+const byId = new Map(THEMES.map(t => [t.id, t]))
+const isScene = (v: unknown): v is SceneId => byId.has(v as SceneId)
 
 const apply = async ($: EngineInterface, choice: Choice) => {
-  const entry = THEMES.find(t => t.id === choice)
-
-  if (entry === undefined) {
-    // Off: clear only because the person pressed it.
-    await $.theme.clear()
-  } else {
-    // Not drawn yet only means no app is attached now; the theme stands and
-    // draws once one attaches.
-    await $.theme.set(entry.look)
-  }
+  // The band marks the choice at once; the theme and the saved choice follow
+  // together rather than one after the other.
   await update($, current, () => choice)
-  await $.store.set(STORE_KEY, choice)
+  const entry = choice === 'off' ? undefined : byId.get(choice)
+  // Off clears only because the person pressed it. A set that is not drawn
+  // yet only means no app is attached now: the theme stands and draws once
+  // one attaches.
+  await Promise.all([
+    entry === undefined ? $.theme.clear() : $.theme.set(entry.look()),
+    $.store.set(STORE_KEY, choice),
+  ])
 }
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({
-      name: 'chat-themes',
-      description: 'Đổi hình nền ASCII: /chat-themes underwater | pond | night-sky | fireflies | off',
-    })
-
-    // The picker used to be a pane; close one an earlier version opened.
-    await $.ui.close({ id: OLD_PANE }).catch(() => undefined)
-
-    const saved = await $.store.get(STORE_KEY)
+    // Independent calls go out together, so the session starts sooner.
+    const [saved] = await Promise.all([
+      $.store.get(STORE_KEY),
+      $.command.register({
+        name: 'chat-themes',
+        description: 'Đổi hình nền ASCII: /chat-themes underwater | pond | night-sky | fireflies | off',
+      }),
+      // The picker used to be a pane; close one an earlier version opened.
+      $.ui.close({ id: OLD_PANE }).catch(() => undefined),
+    ])
 
     if (isScene(saved)) {
-      const entry = THEMES.find(t => t.id === saved)!
-      await $.theme.set(entry.look)
-      await update($, current, () => saved)
+      await Promise.all([$.theme.set(byId.get(saved)!.look()), update($, current, () => saved)])
     }
 
     return next(e)
@@ -166,7 +171,7 @@ export const register: Register = on => {
 
     if (arg === 'off' || isScene(arg)) {
       await apply($, arg)
-      const name = THEMES.find(t => t.id === arg)?.name ?? 'Tắt hình nền'
+      const name = byId.get(arg as SceneId)?.name ?? 'Tắt hình nền'
 
       return { text: `Chat themes: ${name}` }
     }
@@ -217,8 +222,8 @@ export const register: Register = on => {
     }
 
     const { Svg } = $.ui.resolve(e)
-    const scene = SCENES[e.props.scene]
+    const drawn = scene(e.props.scene)
 
-    return <Svg source={scene.svg} alt={scene.alt} isInteractive />
+    return <Svg source={drawn.svg} alt={drawn.alt} isInteractive />
   })
 }

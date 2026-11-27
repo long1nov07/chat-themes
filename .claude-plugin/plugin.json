@@ -1,6 +1,6 @@
 {
   "name": "chat-themes",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Chat themes bar above the prompt with animated ASCII backdrops: underwater, pond with goldfish, night sky and fireflies",
   "types": "./types/index.d.ts",
   "author": {

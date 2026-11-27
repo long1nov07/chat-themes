@@ -4,6 +4,10 @@ import type { SceneId } from '../types'
 // are <text> in the generic monospace font, moved by CSS alone. Each moving
 // part has a resting place and opacity in the plain markup, so the scene still
 // looks finished when motion is turned off.
+//
+// Kept light on purpose: a backdrop plays for hours. Characters that move
+// alike share one animated group instead of one animation each, nothing is
+// blurred by a filter, and a scene is built only when it is first drawn.
 
 const W = 1600
 const H = 1000
@@ -19,15 +23,20 @@ const rng = (seed: number) => () => {
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
-const n = (v: number) => v.toFixed(1)
+const n = (v: number) => Math.round(v)
+const pick = <T,>(r: () => number, list: readonly T[]): T => list[Math.floor(r() * list.length)]!
 
 const svg = (defs: string, css: string, body: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice">` +
-  `<defs>${defs}</defs><style>text{font-family:monospace;white-space:pre}${css}</style>${body}</svg>`
+  `<defs>${defs}</defs><style>text{font-family:monospace;white-space:pre;text-rendering:optimizeSpeed}${css}</style>${body}</svg>`
 
 const sky = (id: string, top: string, bottom: string) =>
   `<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">` +
   `<stop offset="0" stop-color="${top}"/><stop offset="1" stop-color="${bottom}"/></linearGradient>`
+
+// One animated group: its class names the keyframes, the style its timing.
+const group = (cls: string, seconds: number, delay: number, inner: string, attrs = '') =>
+  `<g class="${cls}" style="animation-duration:${seconds.toFixed(1)}s;animation-delay:-${delay.toFixed(1)}s"${attrs}>${inner}</g>`
 
 // ---------------------------------------------------------------- underwater
 
@@ -37,88 +46,94 @@ const underwater = (): string => {
 
   parts.push(`<rect width="${W}" height="${H}" fill="url(#sea)"/>`)
 
-  // light rays from the surface
+  // light rays from the surface, held still: a full-screen shimmer would
+  // repaint the whole window every frame
+  let rays = ''
   for (let i = 0; i < 5; i++) {
     const x = 150 + i * 320 + r() * 80
-    parts.push(
-      `<polygon class="ray" points="${n(x)},0 ${n(x + 90)},0 ${n(x + 260)},${H} ${n(x + 40)},${H}" ` +
-        `style="animation-duration:${n(9 + r() * 6)}s;animation-delay:-${n(r() * 10)}s" opacity=".05"/>`,
-    )
+    rays += `<polygon points="${n(x)},0 ${n(x + 90)},0 ${n(x + 260)},${H} ${n(x + 40)},${H}"/>`
   }
+  parts.push(`<g fill="#9fe3ff" opacity=".06">${rays}</g>`)
 
-  // the surface, rows of ASCII waves drifting side to side
+  // the surface, rows of ASCII waves drifting side to side as one
+  let waves = ''
   for (let row = 0; row < 3; row++) {
     let line = ''
     for (let i = 0; i < 150; i++) line += r() < 0.55 ? '~' : r() < 0.5 ? '-' : ' '
-    parts.push(
-      `<text class="wave" x="-60" y="${40 + row * 26}" font-size="22" opacity="${n(0.45 - row * 0.12)}" ` +
-        `style="animation-duration:${14 + row * 5}s;animation-delay:-${row * 3}s">${line}</text>`,
-    )
+    waves += `<text x="-60" y="${40 + row * 26}" font-size="22" opacity="${(0.45 - row * 0.12).toFixed(2)}">${line}</text>`
   }
+  parts.push(group('wave', 16, 0, waves, ' fill="#7cc8e6"'))
 
-  // seaweed swaying from the sand
+  // seaweed: the roots hold still while the middle and the tips of each bed
+  // slide side to side, the tips further, so the strands look to bend. Sliding
+  // is cheap to draw; skewing or turning text redraws every glyph each frame.
+  const base = H - 50
+  const roots: number[] = []
+  const BEDS = 5
+  const tiers = Array.from({ length: BEDS }, () => ['', '', ''])
   for (let i = 0; i < 14; i++) {
     const x = 40 + i * 112 + r() * 60
     const tall = 6 + Math.floor(r() * 9)
-    const base = H - 50
-    let strand = ''
+    const bed = tiers[Math.floor(i / 3)]!
     for (let k = 0; k < tall; k++) {
-      const ch = k % 2 === 0 ? '(' : ')'
-      strand += `<text x="${n(x + (k % 2) * 6)}" y="${n(base - k * 22)}" font-size="24">${ch}</text>`
+      const tier = k < tall * 0.34 ? 0 : k < tall * 0.67 ? 1 : 2
+      bed[tier] += `<text x="${n(x + (k % 2) * 6)}" y="${base - k * 22}" font-size="24">${k % 2 === 0 ? '(' : ')'}</text>`
     }
-    parts.push(
-      `<g class="weed" style="transform-origin:${n(x)}px ${base}px;animation-duration:${n(5 + r() * 4)}s;animation-delay:-${n(r() * 6)}s">${strand}</g>`,
-    )
+    roots.push(x)
   }
+  tiers.forEach(([low = "", mid = "", tip = ""], i) => {
+    const seconds = 6 + i * 0.9
+    const delay = i * 1.7
+    parts.push(`<g class="weed">${low}${group('sway1', seconds, delay, mid)}${group('sway2', seconds, delay, tip)}</g>`)
+  })
 
   // the sand
   for (let row = 0; row < 2; row++) {
     let line = ''
-    for (let i = 0; i < 140; i++) line += '_.,-:.'[Math.floor(r() * 6)]
-    parts.push(`<text x="0" y="${H - 28 + row * 20}" font-size="20" fill="#b89a62" opacity="${n(0.5 - row * 0.15)}">${line}</text>`)
+    for (let i = 0; i < 140; i++) line += pick(r, ['_', '.', ',', '-', ':', '.'])
+    parts.push(`<text x="0" y="${H - 28 + row * 20}" font-size="20" fill="#b89a62" opacity="${(0.5 - row * 0.15).toFixed(2)}">${line}</text>`)
   }
 
-  // fish crossing at different depths
-  for (let i = 0; i < 9; i++) {
-    const right = r() < 0.5
-    const shape = right
-      ? ['><>', '><(((*>', '>-)>'][Math.floor(r() * 3)]!
-      : ['<><', '<*)))><', '<(-<'][Math.floor(r() * 3)]!
-    const y = 220 + r() * 560
-    const x = r() * W
-    const size = 20 + Math.floor(r() * 16)
-    parts.push(
-      `<g class="bob" style="animation-duration:${n(4 + r() * 3)}s;animation-delay:-${n(r() * 4)}s">` +
-        `<text class="${right ? 'swim-r' : 'swim-l'}" x="${n(x)}" y="${n(y)}" font-size="${size}" fill="${['#f2b25c', '#8fd3e8', '#f08a7a', '#e8e08f'][i % 4]}" opacity=".75" ` +
-        `style="animation-duration:${n(55 + r() * 40)}s;animation-delay:-${n(r() * 90)}s">${esc(shape)}</text></g>`,
-    )
+  // fish crossing at different depths; the swim keyframes bob them too
+  const colors = ['#f2b25c', '#8fd3e8', '#f08a7a', '#e8e08f']
+  for (let i = 0; i < 6; i++) {
+    const right = i % 2 === 0
+    const shape = right ? pick(r, ['><>', '><(((*>', '>-)>']) : pick(r, ['<><', '<*)))><', '<(-<'])
+    const fish = `<text x="${n(r() * W)}" y="${n(220 + r() * 560)}" font-size="${20 + Math.floor(r() * 16)}" fill="${colors[i % 4]}">${esc(shape)}</text>`
+    parts.push(group(right ? 'swim-r' : 'swim-l', 55 + r() * 40, r() * 90, fish, ' opacity=".75"'))
   }
 
-  // bubbles rising
-  for (let i = 0; i < 46; i++) {
-    const ch = ['o', 'O', '.', 'o', 'O'][Math.floor(r() * 5)]!
-    parts.push(
-      `<text class="bub" x="${n(r() * W)}" y="${n(200 + r() * 760)}" font-size="${14 + Math.floor(r() * 16)}" opacity=".4" ` +
-        `style="animation-duration:${n(10 + r() * 12)}s;animation-delay:-${n(r() * 22)}s">${ch}</text>`,
-    )
+  // bubbles: narrow streams rising from the seaweed, each stream one animated
+  // strip, drawn twice one screen apart so the loop is seamless
+  for (let c = 0; c < 6; c++) {
+    const root = roots[(c * 5 + 1) % roots.length]! + 10
+    let column = ''
+    for (let i = 0; i < 6; i++) {
+      const x = root + (r() - 0.5) * 50
+      const y = r() * H
+      const size = 14 + Math.floor(r() * 16)
+      const ch = pick(r, ['o', 'O', '.', 'o'])
+      column += `<text x="${n(x)}" y="${n(y)}" font-size="${size}">${ch}</text>`
+      column += `<text x="${n(x)}" y="${n(y + H)}" font-size="${size}">${ch}</text>`
+    }
+    parts.push(group('bub', 16 + c * 2.5, c * 4, column, ' fill="#bfe9fa" opacity=".45"'))
   }
 
   return svg(
     sky('sea', '#0b4468', '#020d18'),
-    '.ray{fill:#9fe3ff;animation:ray ease-in-out infinite alternate}' +
-      '@keyframes ray{from{opacity:.03}to{opacity:.09}}' +
-      '.wave{fill:#7cc8e6;animation:drift ease-in-out infinite alternate}' +
+    '.wave{animation:drift ease-in-out infinite alternate}' +
       '@keyframes drift{from{transform:translateX(-50px)}to{transform:translateX(30px)}}' +
-      '.weed{fill:#2f8a5a;opacity:.7;animation:sway ease-in-out infinite alternate}' +
-      '@keyframes sway{from{transform:rotate(-4deg)}to{transform:rotate(4deg)}}' +
-      '.bob{animation:bob ease-in-out infinite alternate}' +
-      '@keyframes bob{from{transform:translateY(-6px)}to{transform:translateY(6px)}}' +
+      '.weed{fill:#2f8a5a;opacity:.7}' +
+      '.sway1{animation:sway1 ease-in-out infinite alternate}' +
+      '@keyframes sway1{from{transform:translateX(-4px)}to{transform:translateX(4px)}}' +
+      '.sway2{animation:sway2 ease-in-out infinite alternate}' +
+      '@keyframes sway2{from{transform:translateX(-11px)}to{transform:translateX(11px)}}' +
       '.swim-r{animation:swimr linear infinite}' +
-      '@keyframes swimr{from{transform:translateX(-1900px)}to{transform:translateX(1900px)}}' +
+      '@keyframes swimr{0%{transform:translate(-1900px,0)}25%{transform:translate(-950px,8px)}50%{transform:translate(0,-6px)}75%{transform:translate(950px,8px)}100%{transform:translate(1900px,0)}}' +
       '.swim-l{animation:swiml linear infinite}' +
-      '@keyframes swiml{from{transform:translateX(1900px)}to{transform:translateX(-1900px)}}' +
-      '.bub{fill:#bfe9fa;animation:rise linear infinite}' +
-      '@keyframes rise{0%{transform:translate(0,320px);opacity:0}15%{opacity:.6}50%{transform:translate(8px,0)}85%{opacity:.45}100%{transform:translate(-4px,-320px);opacity:0}}',
+      '@keyframes swiml{0%{transform:translate(1900px,0)}25%{transform:translate(950px,-8px)}50%{transform:translate(0,6px)}75%{transform:translate(-950px,-8px)}100%{transform:translate(-1900px,0)}}' +
+      '.bub{animation:rise linear infinite}' +
+      `@keyframes rise{from{transform:translateY(0)}to{transform:translateY(-${H}px)}}`,
     parts.join(''),
   )
 }
@@ -143,34 +158,46 @@ const nightSky = (): string => {
 
   parts.push(`<rect width="${W}" height="${H}" fill="url(#night)"/>`)
 
-  // stars twinkling, slowly
-  for (let i = 0; i < 130; i++) {
-    const ch = ['.', '.', '*', '+', "'", '.'][Math.floor(r() * 6)]!
+  // most stars hold still; four clusters twinkle, each on its own beat
+  const star = () => {
+    const ch = pick(r, ['.', '.', '*', '+', "'", '.'])
     const size = ch === '*' || ch === '+' ? 14 + Math.floor(r() * 10) : 16 + Math.floor(r() * 8)
-    parts.push(
-      `<text class="star" x="${n(r() * W)}" y="${n(20 + r() * 700)}" font-size="${size}" opacity=".6" ` +
-        `style="animation-duration:${n(3 + r() * 5)}s;animation-delay:-${n(r() * 8)}s">${esc(ch)}</text>`,
-    )
+    return `<text x="${n(r() * W)}" y="${n(20 + r() * 700)}" font-size="${size}">${esc(ch)}</text>`
+  }
+  let still = ''
+  for (let i = 0; i < 90; i++) still += star()
+  parts.push(`<g fill="#e8ecff" opacity=".5">${still}</g>`)
+  // each cluster keeps to its own patch of sky, so a twinkle repaints a patch
+  for (let c = 0; c < 6; c++) {
+    let cluster = ''
+    for (let i = 0; i < 7; i++) {
+      const x = (c % 3) * (W / 3) + r() * (W / 3)
+      const y = 20 + Math.floor(c / 3) * 350 + r() * 330
+      const ch = pick(r, ['.', '*', '+', '.'])
+      cluster += `<text x="${n(x)}" y="${n(y)}" font-size="${16 + Math.floor(r() * 8)}">${ch}</text>`
+    }
+    parts.push(group('twinkle', 4 + c * 0.9, c * 1.3, cluster, ' fill="#ffffff" opacity=".6"'))
   }
 
   // clouds drifting
   for (let i = 0; i < 4; i++) {
     const line = ['.-~~~-.', '.~~~~~~~~-.', '~-.__.-~~-.', '.-~~-.__.-~-.'][i]!
-    parts.push(
-      `<text class="cloud" x="${n(r() * W)}" y="${n(260 + r() * 280)}" font-size="${26 + i * 4}" opacity=".18" ` +
-        `style="animation-duration:${n(120 + r() * 80)}s;animation-delay:-${n(r() * 200)}s">${esc(line)}</text>`,
-    )
+    const cloud = `<text x="${n(r() * W)}" y="${n(260 + r() * 280)}" font-size="${26 + i * 4}">${esc(line)}</text>`
+    parts.push(group('cloud', 120 + r() * 80, r() * 200, cloud, ' fill="#aab3e0" opacity=".18"'))
   }
 
   // shooting stars, rare
   for (let i = 0; i < 2; i++) {
+    const x = 200 + i * 600
+    const y = 80 + i * 60
     parts.push(
-      `<g transform="rotate(18 ${n(200 + i * 600)} ${n(80 + i * 60)})"><text class="shoot" x="${n(200 + i * 600)}" y="${n(80 + i * 60)}" font-size="22" opacity="0" ` +
-        `style="animation-delay:-${n(i * 9 + 3)}s">${esc('- - --==*')}</text></g>`,
+      `<g transform="rotate(18 ${x} ${y})">` +
+        group('shoot', 19, i * 9 + 3, `<text x="${x}" y="${y}" font-size="22">${esc('- - --==*')}</text>`, ' fill="#ffffff" opacity="0"') +
+        `</g>`,
     )
   }
 
-  // mountains, layered rows of carets
+  // mountains, layered rows of carets; drawn still
   const ridge = (seed: number, y: number, color: string, opacity: number) => {
     const rr = rng(seed)
     const heights: number[] = []
@@ -198,11 +225,11 @@ const nightSky = (): string => {
 
   return svg(
     sky('night', '#04061a', '#1b2150'),
-    '.star{fill:#e8ecff;animation:twinkle ease-in-out infinite alternate}' +
-      '@keyframes twinkle{from{opacity:.15}to{opacity:.9}}' +
-      '.cloud{fill:#aab3e0;animation:cloud linear infinite}' +
+    '.twinkle{animation:twinkle ease-in-out infinite alternate}' +
+      '@keyframes twinkle{from{opacity:.15}to{opacity:.95}}' +
+      '.cloud{animation:cloud linear infinite}' +
       '@keyframes cloud{from{transform:translateX(-1800px)}to{transform:translateX(1800px)}}' +
-      '.shoot{fill:#ffffff;animation:shoot 19s linear infinite}' +
+      '.shoot{animation:shoot linear infinite}' +
       '@keyframes shoot{0%{transform:translateX(0);opacity:0}2%{opacity:.85}7%{transform:translateX(700px);opacity:0}100%{transform:translateX(700px);opacity:0}}' +
       '.moon{opacity:.85;animation:glow 12s ease-in-out infinite alternate}' +
       '@keyframes glow{from{opacity:.75}to{opacity:.95}}',
@@ -219,9 +246,9 @@ const fireflies = (): string => {
   parts.push(`<rect width="${W}" height="${H}" fill="url(#dusk)"/>`)
 
   // faint stars above the meadow
-  for (let i = 0; i < 40; i++) {
-    parts.push(`<text x="${n(r() * W)}" y="${n(20 + r() * 360)}" font-size="16" fill="#c9d8c0" opacity="${n(0.15 + r() * 0.25)}">.</text>`)
-  }
+  let stars = ''
+  for (let i = 0; i < 40; i++) stars += `<text x="${n(r() * W)}" y="${n(20 + r() * 360)}" font-size="16" opacity="${(0.3 + r() * 0.5).toFixed(2)}">.</text>`
+  parts.push(`<g fill="#c9d8c0" opacity=".5">${stars}</g>`)
 
   // tree line far back
   let trees = ''
@@ -230,38 +257,47 @@ const fireflies = (): string => {
     const foot = H - 250 - r() * 30
     for (let k = 0; k < tall; k++) {
       const width = 1 + Math.floor(((tall - k) * 2) / 3) * 2
-      trees += `<text x="${n(x)}" y="${n(foot - k * 20)}" font-size="22" text-anchor="middle">${'A'.repeat(width).replace(/A/g, k === tall - 1 ? '^' : '*')}</text>`
+      trees += `<text x="${n(x)}" y="${n(foot - k * 20)}" font-size="22" text-anchor="middle">${(k === tall - 1 ? '^' : '*').repeat(width)}</text>`
     }
     trees += `<text x="${n(x)}" y="${n(foot + 20)}" font-size="22" text-anchor="middle">|</text>`
   }
   parts.push(`<g fill="#1a4429" opacity=".9">${trees}</g>`)
 
-  // fireflies, drifting and glowing
-  for (let i = 0; i < 48; i++) {
-    const path = ['fa', 'fb', 'fc'][i % 3]
-    const ch = r() < 0.7 ? '*' : '.'
-    parts.push(
-      `<g class="${path}" style="animation-duration:${n(14 + r() * 14)}s;animation-delay:-${n(r() * 28)}s">` +
-        `<text class="fly" x="${n(r() * W)}" y="${n(260 + r() * 640)}" font-size="${16 + Math.floor(r() * 12)}" opacity=".6" filter="url(#glow)" ` +
-        `style="animation-duration:${n(4 + r() * 4)}s;animation-delay:-${n(r() * 8)}s">${ch}</text></g>`,
-    )
+  // fireflies: a soft halo (a gradient, not a blur filter) under each spark.
+  // Six swarms drift; inside each, two flocks glow on their own beat.
+  const fly = (cx: number, cy: number) => {
+    const x = n(cx + (r() - 0.5) * 360)
+    const y = n(cy + (r() - 0.5) * 300)
+    const size = 16 + Math.floor(r() * 12)
+    return `<circle cx="${x}" cy="${y - size * 0.3}" r="${n(size * 0.9)}" fill="url(#halo)"/>` +
+      `<text x="${x}" y="${y}" font-size="${size}" text-anchor="middle">${r() < 0.7 ? '*' : '.'}</text>`
+  }
+  for (let s = 0; s < 6; s++) {
+    // each swarm keeps to its own patch of the meadow
+    const cx = 180 + (s % 3) * 620 + (r() - 0.5) * 160
+    const cy = s < 3 ? 430 : 720
+    let swarm = ''
+    for (let f = 0; f < 2; f++) {
+      let flock = ''
+      for (let i = 0; i < 3; i++) flock += fly(cx, cy)
+      swarm += group('pulse', 4 + r() * 4, r() * 8, flock, ' opacity=".6"')
+    }
+    parts.push(group(['fa', 'fb', 'fc'][s % 3]!, 14 + r() * 14, r() * 28, swarm, ' fill="#e6f56a"'))
   }
 
-  // tall grass in front, swaying
+  // tall grass in front, swaying in two layers
+  const grass = ['', '']
   for (let row = 0; row < 4; row++) {
     let line = ''
-    for (let i = 0; i < 150; i++) line += "|/',v|Y|"[Math.floor(r() * 8)]
-    parts.push(
-      `<text class="grass" x="-30" y="${H - 90 + row * 24}" font-size="24" fill="${['#1f4a2c', '#245733', '#1a3f26', '#14321e'][row]}" ` +
-        `style="animation-duration:${n(6 + row * 1.5)}s;animation-delay:-${row}s">${esc(line)}</text>`,
-    )
+    for (let i = 0; i < 150; i++) line += pick(r, ['|', '/', "'", ',', 'v', '|', 'Y', '|'])
+    grass[row % 2] += `<text x="-30" y="${H - 90 + row * 24}" font-size="24" fill="${['#1f4a2c', '#245733', '#1a3f26', '#14321e'][row]}">${esc(line)}</text>`
   }
+  grass.forEach((layer, i) => parts.push(group('grass', 6 + i * 2, i * 1.5, layer)))
 
   return svg(
     sky('dusk', '#050b12', '#0f2418') +
-      '<filter id="glow" x="-200%" y="-200%" width="500%" height="500%">' +
-      '<feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>',
-    '.fly{fill:#e6f56a;animation:pulse ease-in-out infinite alternate}' +
+      '<radialGradient id="halo"><stop offset="0" stop-color="#e6f56a" stop-opacity=".55"/><stop offset="1" stop-color="#e6f56a" stop-opacity="0"/></radialGradient>',
+    '.pulse{animation:pulse ease-in-out infinite alternate}' +
       '@keyframes pulse{0%{opacity:.05}60%{opacity:.25}100%{opacity:.95}}' +
       '.fa{animation:fa ease-in-out infinite alternate}' +
       '@keyframes fa{0%{transform:translate(0,0)}50%{transform:translate(60px,-40px)}100%{transform:translate(-30px,-90px)}}' +
@@ -278,9 +314,27 @@ const fireflies = (): string => {
 // ---------------------------------------------------------------- pond surface
 
 // A school of five goldfish crosses the pond on a diagonal; each pass of the
-// cycle takes another diagonal. The school is laid out facing right and
-// pointed along its path by the group's transform, so it swims along x alone.
+// 75 second cycle takes another diagonal. One group carries the whole school:
+// its keyframes place it at a pass's start, turn it along that diagonal and
+// swim it along x, then jump, off screen, to the next pass's start.
 const FISH = "><(((('>"
+
+const PASSES = [
+  'translate(-350px,120px) scale(1,1) rotate(24deg)',
+  'translate(1950px,260px) scale(-1,1) rotate(22deg)',
+  'translate(-350px,980px) scale(1,1) rotate(-30deg)',
+] as const
+
+const schoolKeyframes = () => {
+  const at = (pass: number, x: number) => `transform:${PASSES[pass]} translateX(${x}px)`
+  const jump = 'animation-timing-function:steps(1,end)'
+  return (
+    '@keyframes school{' +
+    `0%{${at(0, 0)}}30%{${at(0, 2700)}}33.3%{${at(0, 2700)};${jump}}` +
+    `33.4%{${at(1, 0)}}63.3%{${at(1, 2700)}}66.6%{${at(1, 2700)};${jump}}` +
+    `66.7%{${at(2, 0)}}96.6%{${at(2, 2700)}}100%{${at(2, 2700)}}}`
+  )
+}
 
 const pond = (): string => {
   const r = rng(53)
@@ -288,16 +342,16 @@ const pond = (): string => {
 
   parts.push(`<rect width="${W}" height="${H}" fill="url(#pond)"/>`)
 
-  // faint ripple texture on the surface, drifting slowly
+  // faint ripple texture on the surface, held still: drifting, it would
+  // repaint the whole window every frame
+  let texture = ''
   for (let i = 0; i < 70; i++) {
-    const mark = ['~', '~~', '-~', '~ ~', '.'][Math.floor(r() * 5)]!
-    parts.push(
-      `<text class="tex" x="${n(r() * W)}" y="${n(r() * H)}" font-size="${16 + Math.floor(r() * 10)}" opacity="${n(0.08 + r() * 0.12)}" ` +
-        `style="animation-duration:${n(16 + r() * 14)}s;animation-delay:-${n(r() * 30)}s">${mark}</text>`,
-    )
+    const mark = pick(r, ['~', '~~', '-~', '~ ~', '.'])
+    texture += `<text x="${n(r() * W)}" y="${n(r() * H)}" font-size="${16 + Math.floor(r() * 10)}" opacity="${(0.4 + r() * 0.6).toFixed(2)}">${mark}</text>`
   }
+  parts.push(`<g fill="#9fd6e0" opacity=".2">${texture}</g>`)
 
-  // goldfish: three passes, each on its own diagonal, one at a time
+  // the goldfish school, with a soft shadow that follows it
   const SCHOOL = [
     [0, 0, 36, '#f6a531'],
     [-160, -62, 32, '#ffb84a'],
@@ -305,55 +359,44 @@ const pond = (): string => {
     [-310, -20, 30, '#ffd36b'],
     [-300, 108, 31, '#f59b3c'],
   ] as const
-  const PASSES = [
-    { x: -350, y: 120, angle: 24, mirror: false, delay: 0 },
-    { x: 1950, y: 260, angle: 22, mirror: true, delay: 25 },
-    { x: -350, y: 980, angle: -30, mirror: false, delay: 50 },
-  ]
-  for (const pass of PASSES) {
-    const fish = SCHOOL.map(
-      ([dx, dy, size, color], i) =>
-        `<text class="wig" x="${dx}" y="${dy}" font-size="${size}" font-weight="bold" fill="${color}" ` +
-        `style="animation-duration:${n(1.1 + i * 0.13)}s;animation-delay:-${n(i * 0.37)}s">${esc(FISH)}</text>`,
-    ).join('')
-    const turn = `translate(${pass.x} ${pass.y})${pass.mirror ? ' scale(-1 1)' : ''} rotate(${pass.angle})`
-    parts.push(
-      `<g transform="${turn}"><g class="school" style="animation-delay:${pass.delay}s">` +
-        `<g opacity=".18" transform="translate(6 8)" fill="#021a22">${fish.replace(/fill="#[0-9a-f]{6}"/g, '')}</g>` +
-        `${fish}</g></g>`,
-    )
-  }
+  const shadow = SCHOOL.map(([dx, dy, size]) => `<text x="${dx + 6}" y="${dy + 8}" font-size="${size}">${esc(FISH)}</text>`).join('')
+  const fish = SCHOOL.map(([dx, dy, size, color], i) =>
+    group('wig', 1.1 + i * 0.13, i * 0.37, `<text x="${dx}" y="${dy}" font-size="${size}" fill="${color}">${esc(FISH)}</text>`),
+  ).join('')
+  parts.push(
+    `<g class="school" style="transform:${PASSES[0]}" font-weight="bold">` +
+      `<g fill="#021a22" opacity=".18">${shadow}</g>${fish}</g>`,
+  )
 
   // the gentle wave, sweeping across every 30 seconds
   let crest = ''
   for (let row = 0; row < 34; row++) {
     const y = row * 30 + 6
     const x = Math.sin(row * 0.35) * 60 + (r() - 0.5) * 50
-    const main = ['~~~~', '~~~', '~~ ~~', '~~~~~'][Math.floor(r() * 4)]!
-    crest += `<text x="${n(x)}" y="${y}" font-size="24" opacity="${n(0.7 + r() * 0.3)}">${main}</text>`
+    crest += `<text x="${n(x)}" y="${y}" font-size="24" opacity="${(0.7 + r() * 0.3).toFixed(2)}">${pick(r, ['~~~~', '~~~', '~~ ~~', '~~~~~'])}</text>`
     if (r() < 0.7) crest += `<text x="${n(x - 80 - r() * 60)}" y="${y + 12}" font-size="20" opacity=".45">${r() < 0.5 ? '~ ~' : '~'}</text>`
     if (r() < 0.4) crest += `<text x="${n(x + 90 + r() * 50)}" y="${y + 8}" font-size="18" opacity=".3">~</text>`
   }
   parts.push(`<g class="wave" opacity="0" fill="#bfeaf2">${crest}</g>`)
 
   // the float, wandering in the upper right and lifted by the wave
+  const ring = (cls: string) =>
+    `<g class="${cls}"><ellipse cx="0" cy="22" rx="46" ry="14" fill="none" stroke="#bfeaf2" stroke-width="2"/></g>`
   const float =
-    `<g class="ring"><ellipse cx="0" cy="22" rx="46" ry="14" fill="none" stroke="#bfeaf2" stroke-width="2"/></g>` +
-    `<g class="ring ring2"><ellipse cx="0" cy="22" rx="46" ry="14" fill="none" stroke="#bfeaf2" stroke-width="2"/></g>` +
-    `<g class="lift"><g class="bob" font-weight="bold">` +
-    `<text x="0" y="-30" font-size="26" fill="#f2f2f2" text-anchor="middle">|</text>` +
-    `<text x="0" y="-6" font-size="28" fill="#e5483f" text-anchor="middle">(@@)</text>` +
-    `<text x="0" y="16" font-size="28" fill="#f2f2f2" text-anchor="middle">(==)</text>` +
+    ring('ring') +
+    ring('ring ring2') +
+    `<g class="lift"><g class="bob" font-weight="bold" text-anchor="middle">` +
+    `<text x="0" y="-30" font-size="26" fill="#f2f2f2">|</text>` +
+    `<text x="0" y="-6" font-size="28" fill="#e5483f">(@@)</text>` +
+    `<text x="0" y="16" font-size="28" fill="#f2f2f2">(==)</text>` +
     `</g></g>` +
     `<text x="0" y="46" font-size="22" fill="#bfeaf2" opacity=".5" text-anchor="middle">~ ~~~ ~</text>`
   parts.push(`<g transform="translate(1180 300)"><g class="wander">${float}</g></g>`)
 
   return svg(
     sky('pond', '#0e5262', '#05262f'),
-    '.tex{fill:#9fd6e0;animation:tex ease-in-out infinite alternate}' +
-      '@keyframes tex{from{transform:translateX(-14px)}to{transform:translateX(14px)}}' +
-      '.school{animation:school 75s linear infinite;animation-fill-mode:backwards}' +
-      '@keyframes school{0%{transform:translateX(0)}30%{transform:translateX(2700px)}100%{transform:translateX(2700px)}}' +
+    '.school{animation:school 75s linear infinite}' +
+      schoolKeyframes() +
       '.wig{animation:wig ease-in-out infinite alternate}' +
       '@keyframes wig{from{transform:translate(0,-4px)}to{transform:translate(-3px,4px)}}' +
       '.wave{animation:wave 30s ease-in-out infinite}' +
@@ -371,21 +414,32 @@ const pond = (): string => {
   )
 }
 
-export const SCENES: Record<SceneId, { svg: string; alt: string }> = {
-  underwater: {
-    svg: underwater(),
-    alt: 'Deep blue water drawn in ASCII: waves at the top, bubbles rising, fish swimming past and seaweed swaying on the sand',
-  },
-  'night-sky': {
-    svg: nightSky(),
-    alt: 'A night sky drawn in ASCII: twinkling stars, a moon in the corner, drifting clouds, a rare shooting star over dark mountains',
-  },
-  pond: {
-    svg: pond(),
-    alt: 'A pond surface seen from above, drawn in ASCII: a school of five goldfish crossing on a diagonal, a red and white float drifting about, and a gentle wave every thirty seconds',
-  },
-  fireflies: {
-    svg: fireflies(),
-    alt: 'A dark meadow drawn in ASCII with glowing fireflies drifting above swaying grass and a distant tree line',
-  },
+// ---------------------------------------------------------------- the table
+
+const BUILD: Record<SceneId, () => string> = {
+  underwater,
+  pond,
+  'night-sky': nightSky,
+  fireflies,
 }
+
+const ALT: Record<SceneId, string> = {
+  underwater: 'Deep blue water drawn in ASCII: waves at the top, bubbles rising, fish swimming past and seaweed swaying on the sand',
+  pond: 'A pond surface seen from above, drawn in ASCII: a school of five goldfish crossing on a diagonal, a red and white float drifting about, and a gentle wave every thirty seconds',
+  'night-sky': 'A night sky drawn in ASCII: twinkling stars, a moon in the corner, drifting clouds, a rare shooting star over dark mountains',
+  fireflies: 'A dark meadow drawn in ASCII with glowing fireflies drifting above swaying grass and a distant tree line',
+}
+
+const built = new Map<SceneId, { svg: string; alt: string }>()
+
+// A scene's markup, built the first time it is asked for and kept after.
+export const scene = (id: SceneId): { svg: string; alt: string } => {
+  let made = built.get(id)
+  if (made === undefined) {
+    made = { svg: BUILD[id](), alt: ALT[id] }
+    built.set(id, made)
+  }
+  return made
+}
+
+export const SCENE_IDS = Object.keys(BUILD) as SceneId[]
