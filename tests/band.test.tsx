@@ -93,7 +93,9 @@ test('the picker shows a picture card for each theme, then folds to one line', a
   expect(await ui.find({ type: 'Svg' })).toBeDefined()
 
   await ui.press({ key: 'close' })
-  expect(await ui.find({ type: 'Svg' })).toBeUndefined()
+  const left = await ui.findAll({ type: 'Svg' })
+  // Folded, the cards go; the mini-figure stays.
+  expect(left.map(svg => String(svg.props?.alt))).toEqual([expect.stringContaining('Claude nhỏ')])
   expect((await ui.find({ key: 'open' }))?.text).toBe('Đổi hình nền')
 
   await ui.press({ key: 'open' })
@@ -119,6 +121,7 @@ test('no card holds a Box sized in cells to look like a picture', async ($, on) 
     expect(box.props?.width).toBeUndefined()
     expect(box.props?.height).toBeUndefined()
   }
-  expect((await ui.findAll({ type: 'Svg' })).length).toBe(5)
+  // Five cards and the mini-figure.
+  expect((await ui.findAll({ type: 'Svg' })).length).toBe(6)
   await ui.unmount()
 })

@@ -1,7 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderChildren, ThemeSetArgs } from 'claude-code'
 
-import type { Choice, SceneId } from '../types'
+import type { Choice, FigureState, Pose, SceneId } from '../types'
+import { FIGURE_ALT, figure } from './figure'
 import { makeColors } from './make-colors.js'
 import { scene, thumbnail } from './scenes'
 
@@ -19,6 +20,48 @@ const PLAIN_CARD =
 
 // Whether the picker is open: open with its cards, or folded to one line.
 const isOpen = atom({ plugin: 'chat-themes', key: 'isOpen' } as const, true)
+// The mini-figure's pose, and the one it came from, which picks its move.
+const pose = atom({ plugin: 'chat-themes', key: 'pose' } as const, { now: 'chill', from: null } as FigureState)
+
+const setPose = async ($: EngineInterface, now: Pose) => {
+  const was = await read($, pose)
+  if (was.now !== now) await update($, pose, () => ({ now, from: was.now }))
+}
+
+// While Claude Code is idle the figure chills or naps, switching at random.
+// One steady tick counts the idle time, one small call every ten seconds, and
+// switches only when a stint is up. It stops while a turn runs, when the
+// figure is at work anyway, and starts again when the turn ends.
+const TICK_MS = 10_000
+let idleTicks = 0
+let stintTicks = 0
+let ticking: { cancel: () => void } | undefined
+const newStint = (p: Pose) => {
+  idleTicks = 0
+  const seconds = p === 'sleep' ? 40 + Math.random() * 40 : 25 + Math.random() * 30
+  stintTicks = Math.round((seconds * 1000) / TICK_MS)
+}
+const startTicking = ($: EngineInterface, from: Pose) => {
+  ticking?.cancel()
+  newStint(from)
+  ticking = $.clock.every(TICK_MS, () => {
+    idleTicks += 1
+    if (idleTicks < stintTicks) return
+    void (async () => {
+      const { now } = await read($, pose)
+      if (now === 'work') return
+      const next = now === 'sleep' ? 'chill' : 'sleep'
+      newStint(next)
+      await setPose($, next)
+    })()
+  })
+}
+
+// A turn of the main loop, not a subagent's.
+const isMainLoop = (e: object) => !('agentId' in e) || e.agentId === undefined
+
+// Little faces for the terminal, which draws no pictures.
+const FACE: Record<Pose, string> = { chill: '(•‿•) ♪', sleep: '(-_-) zZ', work: '(•_•)⌨' }
 
 type Entry = {
   id: SceneId
@@ -182,6 +225,26 @@ export const register: Register = on => {
       ])
     }
 
+    startTicking($, (await read($, pose)).now)
+
+    return next(e)
+  })
+
+  on('turn.start', async ($, e, next) => {
+    if (isMainLoop(e)) {
+      ticking?.cancel()
+      ticking = undefined
+      // The picker folds away once the conversation goes on.
+      await Promise.all([setPose($, 'work'), update($, isOpen, () => false)])
+    }
+    return next(e)
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    if (isMainLoop(e)) {
+      await setPose($, 'chill')
+      startTicking($, 'chill')
+    }
     return next(e)
   })
 
@@ -207,18 +270,36 @@ export const register: Register = on => {
 
     const ui = $.ui.resolve(e)
     const { Box, Text, Button } = ui
-    const chosen = await read($, current)
-    const open = await read($, isOpen)
+    const [chosen, open, state] = await Promise.all([read($, current), read($, isOpen), read($, pose)])
+    // A turn may start before its event reaches the mod: the band knows.
+    const shown: FigureState =
+      e.props.isWorking && state.now !== 'work' ? { now: 'work', from: state.now } : state
+    const PictureSvg = e.surface !== 'terminal' && 'Svg' in ui ? ui.Svg : undefined
+    const mini =
+      PictureSvg !== undefined ? (
+        <PictureSvg source={figure(shown.now, shown.from)} alt={FIGURE_ALT[shown.now]} width={80} height={80} isInteractive />
+      ) : (
+        <Text dimColor>{FACE[shown.now]}</Text>
+      )
+    // The figure stands at the right end of the band, on the chat bar.
+    const withFigure = (content: RenderChildren) => (
+      <Box flexDirection="row" alignItems="flex-end" gap="sm">
+        <Box flexDirection="column" flexGrow={1}>
+          {content}
+        </Box>
+        {mini}
+      </Box>
+    )
     const using = chosen === 'off' ? undefined : byId.get(chosen)
     const setOpen = (value: boolean) => () => update($, isOpen, () => value)
 
     if (!open) {
-      return (
+      return withFigure(
         <Box flexDirection="row" gap="sm" alignItems="center">
           <Text dimColor>Chat themes</Text>
           <Text>{using === undefined ? 'Không dùng hình nền' : `${using.icon} ${using.name}`}</Text>
           <Button key="open" variant="secondary" label="Đổi hình nền" onPress={setOpen(true)} />
-        </Box>
+        </Box>,
       )
     }
 
@@ -240,7 +321,7 @@ export const register: Register = on => {
       </Box>
     )
 
-    return (
+    return withFigure(
       <Box flexDirection="column" gap="sm" padding="sm" borderStyle="round" borderColor="subtle">
         <Box flexDirection="row" justifyContent="space-between" alignItems="center">
           <Box flexDirection="row" gap="sm" alignItems="center">
@@ -280,7 +361,7 @@ export const register: Register = on => {
         {e.surface !== 'desktop' && e.surface !== 'mobile' && (
           <Text dimColor>Hình nền chỉ hiện trong app desktop và mobile.</Text>
         )}
-      </Box>
+      </Box>,
     )
   })
 

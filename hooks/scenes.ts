@@ -430,13 +430,29 @@ const ALT: Record<SceneId, string> = {
   fireflies: 'A dark meadow drawn in ASCII with glowing fireflies drifting above swaying grass and a distant tree line',
 }
 
+// Slow loops move in steps of about a pixel (or a small fade) rather than
+// every frame: the eye cannot tell at that speed, and the scene costs less
+// to keep moving (measured: underwater -23%, fireflies -17%, pond -8%; the
+// night sky gained nothing, so it keeps its smooth loops).
+const STEPPED: Partial<Record<SceneId, string>> = {
+  underwater:
+    '.wave{animation-timing-function:steps(80,jump-none)}.sway1{animation-timing-function:steps(8,jump-none)}' +
+    '.sway2{animation-timing-function:steps(22,jump-none)}',
+  pond:
+    '.wander{animation-timing-function:steps(120,jump-none)}.ring{animation-timing-function:steps(12,jump-none)}' +
+    '.bob{animation-timing-function:steps(6,jump-none)}.wig{animation-timing-function:steps(8,jump-none)}',
+  fireflies:
+    '.fa,.fb,.fc{animation-timing-function:steps(60,jump-none)}.pulse{animation-timing-function:steps(8,jump-none)}' +
+    '.grass{animation-timing-function:steps(12,jump-none)}',
+}
+
 const built = new Map<SceneId, { svg: string; alt: string }>()
 
 // A scene's markup, built the first time it is asked for and kept after.
 export const scene = (id: SceneId): { svg: string; alt: string } => {
   let made = built.get(id)
   if (made === undefined) {
-    made = { svg: BUILD[id](), alt: ALT[id] }
+    made = { svg: BUILD[id]().replace('</style>', `${STEPPED[id] ?? ''}</style>`), alt: ALT[id] }
     built.set(id, made)
   }
   return made

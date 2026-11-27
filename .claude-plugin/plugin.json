@@ -1,7 +1,7 @@
 {
   "name": "chat-themes",
-  "version": "0.4.2",
-  "description": "Chat themes picker above the prompt, with picture cards of animated ASCII backdrops: underwater, pond with goldfish, night sky and fireflies",
+  "version": "0.5.0",
+  "description": "Chat themes picker above the prompt with picture cards of animated ASCII backdrops, and a mini Claude in a hard hat that chills, naps and works on a laptop",
   "types": "./types/index.d.ts",
   "author": {
     "name": "long1nov07"
