@@ -275,6 +275,102 @@ const fireflies = (): string => {
   )
 }
 
+// ---------------------------------------------------------------- pond surface
+
+// A school of five goldfish crosses the pond on a diagonal; each pass of the
+// cycle takes another diagonal. The school is laid out facing right and
+// pointed along its path by the group's transform, so it swims along x alone.
+const FISH = "><(((('>"
+
+const pond = (): string => {
+  const r = rng(53)
+  const parts: string[] = []
+
+  parts.push(`<rect width="${W}" height="${H}" fill="url(#pond)"/>`)
+
+  // faint ripple texture on the surface, drifting slowly
+  for (let i = 0; i < 70; i++) {
+    const mark = ['~', '~~', '-~', '~ ~', '.'][Math.floor(r() * 5)]!
+    parts.push(
+      `<text class="tex" x="${n(r() * W)}" y="${n(r() * H)}" font-size="${16 + Math.floor(r() * 10)}" opacity="${n(0.08 + r() * 0.12)}" ` +
+        `style="animation-duration:${n(16 + r() * 14)}s;animation-delay:-${n(r() * 30)}s">${mark}</text>`,
+    )
+  }
+
+  // goldfish: three passes, each on its own diagonal, one at a time
+  const SCHOOL = [
+    [0, 0, 36, '#f6a531'],
+    [-160, -62, 32, '#ffb84a'],
+    [-150, 66, 33, '#f08c2a'],
+    [-310, -20, 30, '#ffd36b'],
+    [-300, 108, 31, '#f59b3c'],
+  ] as const
+  const PASSES = [
+    { x: -350, y: 120, angle: 24, mirror: false, delay: 0 },
+    { x: 1950, y: 260, angle: 22, mirror: true, delay: 25 },
+    { x: -350, y: 980, angle: -30, mirror: false, delay: 50 },
+  ]
+  for (const pass of PASSES) {
+    const fish = SCHOOL.map(
+      ([dx, dy, size, color], i) =>
+        `<text class="wig" x="${dx}" y="${dy}" font-size="${size}" font-weight="bold" fill="${color}" ` +
+        `style="animation-duration:${n(1.1 + i * 0.13)}s;animation-delay:-${n(i * 0.37)}s">${esc(FISH)}</text>`,
+    ).join('')
+    const turn = `translate(${pass.x} ${pass.y})${pass.mirror ? ' scale(-1 1)' : ''} rotate(${pass.angle})`
+    parts.push(
+      `<g transform="${turn}"><g class="school" style="animation-delay:${pass.delay}s">` +
+        `<g opacity=".18" transform="translate(6 8)" fill="#021a22">${fish.replace(/fill="#[0-9a-f]{6}"/g, '')}</g>` +
+        `${fish}</g></g>`,
+    )
+  }
+
+  // the gentle wave, sweeping across every 30 seconds
+  let crest = ''
+  for (let row = 0; row < 34; row++) {
+    const y = row * 30 + 6
+    const x = Math.sin(row * 0.35) * 60 + (r() - 0.5) * 50
+    const main = ['~~~~', '~~~', '~~ ~~', '~~~~~'][Math.floor(r() * 4)]!
+    crest += `<text x="${n(x)}" y="${y}" font-size="24" opacity="${n(0.7 + r() * 0.3)}">${main}</text>`
+    if (r() < 0.7) crest += `<text x="${n(x - 80 - r() * 60)}" y="${y + 12}" font-size="20" opacity=".45">${r() < 0.5 ? '~ ~' : '~'}</text>`
+    if (r() < 0.4) crest += `<text x="${n(x + 90 + r() * 50)}" y="${y + 8}" font-size="18" opacity=".3">~</text>`
+  }
+  parts.push(`<g class="wave" opacity="0" fill="#bfeaf2">${crest}</g>`)
+
+  // the float, wandering in the upper right and lifted by the wave
+  const float =
+    `<g class="ring"><ellipse cx="0" cy="22" rx="46" ry="14" fill="none" stroke="#bfeaf2" stroke-width="2"/></g>` +
+    `<g class="ring ring2"><ellipse cx="0" cy="22" rx="46" ry="14" fill="none" stroke="#bfeaf2" stroke-width="2"/></g>` +
+    `<g class="lift"><g class="bob" font-weight="bold">` +
+    `<text x="0" y="-30" font-size="26" fill="#f2f2f2" text-anchor="middle">|</text>` +
+    `<text x="0" y="-6" font-size="28" fill="#e5483f" text-anchor="middle">(@@)</text>` +
+    `<text x="0" y="16" font-size="28" fill="#f2f2f2" text-anchor="middle">(==)</text>` +
+    `</g></g>` +
+    `<text x="0" y="46" font-size="22" fill="#bfeaf2" opacity=".5" text-anchor="middle">~ ~~~ ~</text>`
+  parts.push(`<g transform="translate(1180 300)"><g class="wander">${float}</g></g>`)
+
+  return svg(
+    sky('pond', '#0e5262', '#05262f'),
+    '.tex{fill:#9fd6e0;animation:tex ease-in-out infinite alternate}' +
+      '@keyframes tex{from{transform:translateX(-14px)}to{transform:translateX(14px)}}' +
+      '.school{animation:school 75s linear infinite;animation-fill-mode:backwards}' +
+      '@keyframes school{0%{transform:translateX(0)}30%{transform:translateX(2700px)}100%{transform:translateX(2700px)}}' +
+      '.wig{animation:wig ease-in-out infinite alternate}' +
+      '@keyframes wig{from{transform:translate(0,-4px)}to{transform:translate(-3px,4px)}}' +
+      '.wave{animation:wave 30s ease-in-out infinite}' +
+      '@keyframes wave{0%{transform:translateX(-300px);opacity:0}4%{opacity:.32}22%{opacity:.32}26%{transform:translateX(1900px);opacity:0}100%{transform:translateX(1900px);opacity:0}}' +
+      '.wander{animation:wander 48s ease-in-out infinite}' +
+      '@keyframes wander{0%{transform:translate(0,0)}25%{transform:translate(-140px,60px)}50%{transform:translate(-60px,150px)}75%{transform:translate(110px,70px)}100%{transform:translate(0,0)}}' +
+      '.bob{animation:bob 3.2s ease-in-out infinite alternate}' +
+      '@keyframes bob{from{transform:translateY(-3px) rotate(-2deg)}to{transform:translateY(3px) rotate(2deg)}}' +
+      '.lift{animation:lift 30s ease-in-out infinite}' +
+      '@keyframes lift{0%{transform:translateY(0)}14%{transform:translateY(0) rotate(0)}17%{transform:translateY(-12px) rotate(-7deg)}20%{transform:translateY(5px) rotate(5deg)}24%{transform:translateY(-2px) rotate(-1deg)}28%{transform:translateY(0) rotate(0)}100%{transform:translateY(0)}}' +
+      '.ring{opacity:.25;transform-origin:0 22px;animation:ring 5s ease-out infinite}' +
+      '.ring2{animation-delay:-2.5s}' +
+      '@keyframes ring{from{transform:scale(.6);opacity:.3}to{transform:scale(1.6);opacity:0}}',
+    parts.join(''),
+  )
+}
+
 export const SCENES: Record<SceneId, { svg: string; alt: string }> = {
   underwater: {
     svg: underwater(),
@@ -283,6 +379,10 @@ export const SCENES: Record<SceneId, { svg: string; alt: string }> = {
   'night-sky': {
     svg: nightSky(),
     alt: 'A night sky drawn in ASCII: twinkling stars, a moon in the corner, drifting clouds, a rare shooting star over dark mountains',
+  },
+  pond: {
+    svg: pond(),
+    alt: 'A pond surface seen from above, drawn in ASCII: a school of five goldfish crossing on a diagonal, a red and white float drifting about, and a gentle wave every thirty seconds',
   },
   fireflies: {
     svg: fireflies(),

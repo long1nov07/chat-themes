@@ -29,14 +29,14 @@ const engine = (on: Parameters<TestBody>[1], sets: unknown[]) => {
   on('store.set', () => ({ value: undefined }))
 }
 
-test('the band above the prompt lists the three themes on every surface', async ($, on) => {
+test('the band above the prompt lists the four themes on every surface', async ($, on) => {
   engine(on, [])
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
 
   for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
     const ui = await $.ui.mount({ ...BAND, surface })
 
-    for (const name of ['Dưới nước', 'Bầu trời đêm', 'Đom đóm']) {
+    for (const name of ['Dưới nước', 'Mặt nước', 'Bầu trời đêm', 'Đom đóm']) {
       expect((await ui.find({ type: 'Button', text: new RegExp(name) }))?.text).toContain(name)
     }
     await ui.unmount()
@@ -49,10 +49,10 @@ test('pressing a theme sets its scene and marks it in use', async ($, on) => {
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
 
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
-  await ui.press({ key: 'use-fireflies' })
+  await ui.press({ key: 'use-pond' })
 
-  expect(JSON.stringify(sets.at(-1))).toContain('"scene":"fireflies"')
-  expect((await ui.find({ key: 'use-fireflies' }))?.props?.variant).toBe('primary')
+  expect(JSON.stringify(sets.at(-1))).toContain('"scene":"pond"')
+  expect((await ui.find({ key: 'use-pond' }))?.props?.variant).toBe('primary')
   await ui.unmount()
 })
 

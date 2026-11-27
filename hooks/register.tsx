@@ -57,6 +57,28 @@ const THEMES: Entry[] = [
     ),
   },
   {
+    id: 'pond',
+    icon: '🐟',
+    name: 'Mặt nước',
+    blurb: 'Đàn cá vàng bơi chéo, phao trôi, sóng nhẹ mỗi 30 giây',
+    preview: ['~  ~~   ~  .^. ', "><(((('>  (###)", "  ><(((('> '-' ", ' ~ ~~  ~  ~~ ~ ', '~~  ~  ~~~  ~ '],
+    look: look(
+      'pond',
+      'Chat themes: Pond',
+      '#06262e',
+      { accent: '#f5a531', danger: '#e5564c', success: '#52c48c', warning: '#e8b04a', pro: '#9d8cf0' },
+      {
+        'surface-0': '#06262e',
+        'surface-1': '#0a2d36',
+        'surface-2': '#0d333d',
+        'surface-3': '#103843',
+        'text-primary': '#e8f6f7',
+        'text-secondary': '#bcd9dd',
+        'text-muted': '#92b5ba',
+      },
+    ),
+  },
+  {
     id: 'night-sky',
     icon: '🌙',
     name: 'Bầu trời đêm',
@@ -123,7 +145,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'chat-themes',
-      description: 'Đổi hình nền ASCII: /chat-themes underwater | night-sky | fireflies | off',
+      description: 'Đổi hình nền ASCII: /chat-themes underwater | pond | night-sky | fireflies | off',
     })
 
     // The picker used to be a pane; close one an earlier version opened.
@@ -151,7 +173,7 @@ export const register: Register = on => {
       return { text: `Chat themes: ${name}` }
     }
 
-    return { text: 'Chọn hình nền ở thanh Chat themes ngay trên ô chat, hoặc gõ /chat-themes underwater | night-sky | fireflies | off.' }
+    return { text: 'Chọn hình nền ở thanh Chat themes ngay trên ô chat, hoặc gõ /chat-themes underwater | pond | night-sky | fireflies | off.' }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

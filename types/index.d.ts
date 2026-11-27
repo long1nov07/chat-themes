@@ -1,4 +1,4 @@
-export type SceneId = 'underwater' | 'night-sky' | 'fireflies'
+export type SceneId = 'underwater' | 'pond' | 'night-sky' | 'fireflies'
 export type Choice = SceneId | 'off'
 
 declare module 'claude-code' {
