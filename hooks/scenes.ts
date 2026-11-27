@@ -442,6 +442,67 @@ export const scene = (id: SceneId): { svg: string; alt: string } => {
   return made
 }
 
+// Keeps only what a card shows. Every animation goes (a card is a still
+// picture), and so does each character that sits outside the card's view.
+// A character inside a group that moves or turns it is kept as it is: where
+// it lands is not worked out here.
+const still = (svg: string, view: string): string => {
+  const [vx, vy, vw, vh] = view.split(' ').map(Number) as [number, number, number, number]
+  const MARGIN = 40
+  const inView = (x: number, y: number) =>
+    x > vx - MARGIN - 200 && x < vx + vw + MARGIN && y > vy - MARGIN && y < vy + vh + MARGIN + 30
+
+  const out: string[] = []
+  const moved: boolean[] = []
+  const tag = /<(\/?)(svg|g|text|style)\b([^>]*)>/g
+  let at = 0
+  for (let m = tag.exec(svg); m !== null; m = tag.exec(svg)) {
+    const [whole, closing, name, attrs = ''] = m
+    out.push(svg.slice(at, m.index))
+    at = m.index + whole.length
+
+    if (name === 'style' && closing === '') {
+      // Keep the rules that colour things; drop every keyframe and timing.
+      const end = svg.indexOf('</style>', at)
+      const css = svg
+        .slice(at, end)
+        .replace(/@keyframes [\w-]+\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '')
+        .replace(/animation[\w-]*:[^;}]*;?/g, '')
+      out.push(`<style>${css}</style>`)
+      at = end + '</style>'.length
+      tag.lastIndex = at
+      continue
+    }
+    if (name === 'text' && closing === '') {
+      const x = Number(/\bx="(-?[\d.]+)"/.exec(attrs)?.[1] ?? 0)
+      const y = Number(/\by="(-?[\d.]+)"/.exec(attrs)?.[1] ?? 0)
+      const end = svg.indexOf('</text>', at) + '</text>'.length
+      if (moved.includes(true) || inView(x, y)) out.push(whole + svg.slice(at, end))
+      at = end
+      tag.lastIndex = at
+      continue
+    }
+    if (closing === '') {
+      // A nested svg, a group with a transform, or the school (placed by its
+      // style) moves what it holds.
+      const isMoved = moved.length > 0 && (name === 'svg' || /transform/.test(attrs))
+      moved.push(isMoved)
+      if (whole.endsWith('/>')) moved.pop()
+      out.push(
+        whole
+          .replace(/ style="animation-duration:[^"]*"/, '')
+          .replace(`viewBox="0 0 ${W} ${H}"`, `viewBox="${view}"`)
+          .replace(`style="transform:${PASSES[0]}"`, `style="transform:${PASSES[0]} translateX(1100px)"`),
+      )
+    } else {
+      moved.pop()
+      out.push(whole)
+    }
+  }
+  out.push(svg.slice(at))
+  return out.join('')
+}
+
 const thumbs = new Map<SceneId, string>()
 
 // Where each card looks: the part of the scene with its subject, at the
@@ -453,14 +514,11 @@ const THUMB_VIEW: Record<SceneId, string> = {
   fireflies: '0 280 940 553',
 }
 
-// A still frame of a scene for the picker's cards: every animation paused, the
-// goldfish school moved on to where it is in view. Paused, it costs nothing.
+// A still picture of a scene for the picker's cards, cut to the card's view.
 export const thumbnail = (id: SceneId): string => {
   let made = thumbs.get(id)
   if (made === undefined) {
-    made = scene(id)
-      .svg.replace(`viewBox="0 0 ${W} ${H}"`, `viewBox="${THUMB_VIEW[id]}"`)
-      .replace('</style>', '*{animation-play-state:paused!important}.school{animation-delay:-9s!important}</style>')
+    made = still(scene(id).svg, THUMB_VIEW[id])
     thumbs.set(id, made)
   }
   return made
