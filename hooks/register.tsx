@@ -10,6 +10,13 @@ const OLD_PANE = 'chat-themes'
 const STORE_KEY = 'scene'
 
 const current = atom({ plugin: 'chat-themes', key: 'current' } as const, 'off')
+// The card for no backdrop, drawn as a picture the size of the others: a Box's
+// width and height count character cells, not pixels.
+const PLAIN_CARD =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 136 80">' +
+  '<rect width="136" height="80" rx="6" fill="#16181c"/>' +
+  '<text x="68" y="45" font-family="sans-serif" font-size="12" fill="#8a8f98" text-anchor="middle">Giao diện gốc</text></svg>'
+
 // Whether the picker is open: open with its cards, or folded to one line.
 const isOpen = atom({ plugin: 'chat-themes', key: 'isOpen' } as const, true)
 
@@ -263,9 +270,7 @@ export const register: Register = on => {
             chosen === 'off',
             '#9aa0a6',
             Svg !== undefined ? (
-              <Box width={136} height={80} alignItems="center" justifyContent="center" backgroundColor="#16181c">
-                <Text dimColor>Giao diện gốc</Text>
-              </Box>
+              <Svg source={PLAIN_CARD} alt="Giao diện gốc, không có hình nền" width={136} height={80} />
             ) : (
               <Text mono dimColor>{['               ', '  giao diện    ', '     gốc       ', '               ', '               '].join('\n')}</Text>
             ),

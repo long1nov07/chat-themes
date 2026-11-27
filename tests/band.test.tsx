@@ -109,3 +109,16 @@ test('the terminal picker shows ASCII previews, with no Svg', async ($, on) => {
   expect((await ui.find({ type: 'Text', text: /><\(\(\(\('>/ }))?.text).toContain("><(((('>")
   await ui.unmount()
 })
+
+test('no card holds a Box sized in cells to look like a picture', async ($, on) => {
+  engine(on, [])
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  const boxes = await ui.findAll({ type: 'Box' })
+  for (const box of boxes) {
+    expect(box.props?.width).toBeUndefined()
+    expect(box.props?.height).toBeUndefined()
+  }
+  expect((await ui.findAll({ type: 'Svg' })).length).toBe(5)
+  await ui.unmount()
+})
