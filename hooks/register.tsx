@@ -1,19 +1,22 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, ThemeSetArgs } from 'claude-code'
+import type { EngineInterface, Register, RenderChildren, ThemeSetArgs } from 'claude-code'
 
 import type { Choice, SceneId } from '../types'
 import { makeColors } from './make-colors.js'
-import { scene } from './scenes'
+import { scene, thumbnail } from './scenes'
 
 const PLUGIN = 'chat-themes'
 const OLD_PANE = 'chat-themes'
 const STORE_KEY = 'scene'
 
 const current = atom({ plugin: 'chat-themes', key: 'current' } as const, 'off')
+// Whether the picker is open: open with its cards, or folded to one line.
+const isOpen = atom({ plugin: 'chat-themes', key: 'isOpen' } as const, true)
 
 type Entry = {
   id: SceneId
   icon: string
+  accent: string
   name: string
   blurb: string
   preview: string[]
@@ -41,6 +44,7 @@ const look = (
 const THEMES: Entry[] = [
   {
     id: 'underwater',
+    accent: '#3fb6e0',
     icon: '🌊',
     name: 'Dưới nước',
     blurb: 'Bong bóng, cá bơi, rong biển đung đưa',
@@ -63,6 +67,7 @@ const THEMES: Entry[] = [
   },
   {
     id: 'pond',
+    accent: '#f5a531',
     icon: '🐟',
     name: 'Mặt nước',
     blurb: 'Đàn cá vàng bơi chéo, phao trôi, sóng nhẹ mỗi 30 giây',
@@ -85,6 +90,7 @@ const THEMES: Entry[] = [
   },
   {
     id: 'night-sky',
+    accent: '#8ea2ff',
     icon: '🌙',
     name: 'Bầu trời đêm',
     blurb: 'Sao lấp lánh, trăng, sao băng',
@@ -107,6 +113,7 @@ const THEMES: Entry[] = [
   },
   {
     id: 'fireflies',
+    accent: '#c9df4f',
     icon: '✨',
     name: 'Đom đóm',
     blurb: 'Đom đóm phát sáng trên đồng cỏ',
@@ -160,7 +167,12 @@ export const register: Register = on => {
     ])
 
     if (isScene(saved)) {
-      await Promise.all([$.theme.set(byId.get(saved)!.look()), update($, current, () => saved)])
+      // A theme already chosen: start with the picker folded to one line.
+      await Promise.all([
+        $.theme.set(byId.get(saved)!.look()),
+        update($, current, () => saved),
+        update($, isOpen, () => false),
+      ])
     }
 
     return next(e)
@@ -176,7 +188,9 @@ export const register: Register = on => {
       return { text: `Chat themes: ${name}` }
     }
 
-    return { text: 'Chọn hình nền ở thanh Chat themes ngay trên ô chat, hoặc gõ /chat-themes underwater | pond | night-sky | fireflies | off.' }
+    await update($, isOpen, () => true)
+
+    return { text: 'Đã mở bảng chọn hình nền ngay trên ô chat. Cũng có thể gõ /chat-themes underwater | pond | night-sky | fireflies | off.' }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -184,31 +198,83 @@ export const register: Register = on => {
       return next(e)
     }
 
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const ui = $.ui.resolve(e)
+    const { Box, Text, Button } = ui
     const chosen = await read($, current)
-    const drawsBackdrops = e.surface === 'desktop' || e.surface === 'mobile'
+    const open = await read($, isOpen)
+    const using = chosen === 'off' ? undefined : byId.get(chosen)
+    const setOpen = (value: boolean) => () => update($, isOpen, () => value)
+
+    if (!open) {
+      return (
+        <Box flexDirection="row" gap="sm" alignItems="center">
+          <Text dimColor>Chat themes</Text>
+          <Text>{using === undefined ? 'Không dùng hình nền' : `${using.icon} ${using.name}`}</Text>
+          <Button key="open" variant="secondary" label="Đổi hình nền" onPress={setOpen(true)} />
+        </Box>
+      )
+    }
+
+    // The terminal has no Svg: its cards show the ASCII preview instead.
+    const Svg = e.surface !== 'terminal' && 'Svg' in ui ? ui.Svg : undefined
+    const card = (key: string, label: string, isChosen: boolean, accent: string, face: RenderChildren, onPress: () => unknown) => (
+      <Box
+        key={`card-${key}`}
+        flexDirection="column"
+        alignItems="center"
+        gap="xs"
+        padding="xs"
+        borderStyle="round"
+        borderColor={isChosen ? accent : 'subtle'}
+        hover={{ borderColor: accent }}
+      >
+        {face}
+        <Button key={`use-${key}`} plain label={isChosen ? `${label} ✓` : label} onPress={onPress} />
+      </Box>
+    )
 
     return (
-      <Box flexDirection="column">
-        <Box flexDirection="row" gap={1}>
-          <Text dimColor>Chat themes</Text>
-          {THEMES.map(t => (
-            <Button
-              key={`use-${t.id}`}
-              label={`${t.icon} ${t.name}`}
-              variant={chosen === t.id ? 'primary' : 'secondary'}
-              onPress={() => apply($, t.id)}
-            />
-          ))}
-          <Button
-            key="off"
-            label="Tắt"
-            variant={chosen === 'off' ? 'primary' : 'secondary'}
-            dimColor={chosen !== 'off'}
-            onPress={() => apply($, 'off')}
-          />
+      <Box flexDirection="column" gap="sm" padding="sm" borderStyle="round" borderColor="subtle">
+        <Box flexDirection="row" justifyContent="space-between" alignItems="center">
+          <Box flexDirection="row" gap="sm" alignItems="center">
+            <Text mono backgroundColor="subtle"> /chat-themes </Text>
+            <Text dimColor>ASCII wallpapers</Text>
+          </Box>
+          <Button key="close" role="dismiss" label="Đóng" onPress={setOpen(false)} />
         </Box>
-        {!drawsBackdrops && <Text dimColor>Hình nền chỉ hiện trong app desktop và mobile.</Text>}
+        <Box flexDirection="row" gap="sm" flexWrap="wrap">
+          {THEMES.map(t =>
+            card(
+              t.id,
+              t.name,
+              chosen === t.id,
+              t.accent,
+              Svg !== undefined ? (
+                <Svg source={thumbnail(t.id)} alt={`Xem trước: ${t.name}`} width={136} height={80} />
+              ) : (
+                <Text mono dimColor>{t.preview.join('\n')}</Text>
+              ),
+              () => apply($, t.id),
+            ),
+          )}
+          {card(
+            'off',
+            'Không nền',
+            chosen === 'off',
+            '#9aa0a6',
+            Svg !== undefined ? (
+              <Box width={136} height={80} alignItems="center" justifyContent="center" backgroundColor="#16181c">
+                <Text dimColor>Giao diện gốc</Text>
+              </Box>
+            ) : (
+              <Text mono dimColor>{['               ', '  giao diện    ', '     gốc       ', '               ', '               '].join('\n')}</Text>
+            ),
+            () => apply($, 'off'),
+          )}
+        </Box>
+        {e.surface !== 'desktop' && e.surface !== 'mobile' && (
+          <Text dimColor>Hình nền chỉ hiện trong app desktop và mobile.</Text>
+        )}
       </Box>
     )
   })

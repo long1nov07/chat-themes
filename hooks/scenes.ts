@@ -442,4 +442,28 @@ export const scene = (id: SceneId): { svg: string; alt: string } => {
   return made
 }
 
+const thumbs = new Map<SceneId, string>()
+
+// Where each card looks: the part of the scene with its subject, at the
+// card's shape, so a small card still shows fish, a moon or fireflies.
+const THUMB_VIEW: Record<SceneId, string> = {
+  underwater: '150 380 920 540',
+  pond: '330 170 1020 600',
+  'night-sky': '640 0 960 565',
+  fireflies: '0 280 940 553',
+}
+
+// A still frame of a scene for the picker's cards: every animation paused, the
+// goldfish school moved on to where it is in view. Paused, it costs nothing.
+export const thumbnail = (id: SceneId): string => {
+  let made = thumbs.get(id)
+  if (made === undefined) {
+    made = scene(id)
+      .svg.replace(`viewBox="0 0 ${W} ${H}"`, `viewBox="${THUMB_VIEW[id]}"`)
+      .replace('</style>', '*{animation-play-state:paused!important}.school{animation-delay:-9s!important}</style>')
+    thumbs.set(id, made)
+  }
+  return made
+}
+
 export const SCENE_IDS = Object.keys(BUILD) as SceneId[]

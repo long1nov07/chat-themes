@@ -1,10 +1,8 @@
 # chat-themes
 
-Một mod cho Claude Code: thêm thanh **Chat themes** ngay trên ô chat để chọn hình nền ASCII chuyển động cho cuộc trò chuyện.
+Một mod cho Claude Code: thêm bảng **Chat themes** ngay trên ô chat để chọn hình nền ASCII chuyển động cho cuộc trò chuyện.
 
-```
-Chat themes  [🌊 Dưới nước]  [🐟 Mặt nước]  [🌙 Bầu trời đêm]  [✨ Đom đóm]  [Tắt]
-```
+Bảng có tiêu đề `/chat-themes · ASCII wallpapers` và một hàng thẻ, mỗi thẻ là ảnh xem trước thu nhỏ của một cảnh kèm tên; thẻ đang dùng có viền màu và dấu ✓. Bấm tên dưới thẻ để đổi nền, bấm **Đóng** để thu bảng về một dòng (bấm **Đổi hình nền** để mở lại). Trong terminal, thẻ hiện bản xem trước bằng ký tự ASCII.
 
 - 🌊 **Dưới nước**: sóng `~~-~`, bong bóng `o O .` nổi lên, cá `><>` bơi ngang, rong `()` đung đưa trên cát.
 - 🐟 **Mặt nước**: nhìn từ trên xuống mặt hồ: đàn 5 con cá vàng `><(((('>` bơi chéo qua, mỗi lượt một hướng; chiếc phao đỏ trắng trôi loanh quanh; cứ 30 giây có một đợt sóng nhẹ quét qua làm phao nảy lên.

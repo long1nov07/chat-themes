@@ -52,7 +52,7 @@ test('pressing a theme sets its scene and marks it in use', async ($, on) => {
   await ui.press({ key: 'use-pond' })
 
   expect(JSON.stringify(sets.at(-1))).toContain('"scene":"pond"')
-  expect((await ui.find({ key: 'use-pond' }))?.props?.variant).toBe('primary')
+  expect((await ui.find({ key: 'use-pond' }))?.text).toBe('Mặt nước ✓')
   await ui.unmount()
 })
 
@@ -81,4 +81,31 @@ test('the band hints at the apps only where backdrops cannot draw', async ($, on
   const terminal = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect((await terminal.find({ type: 'Text', text: /chỉ hiện trong app/ }))?.text).toContain('desktop')
   await terminal.unmount()
+})
+
+test('the picker shows a picture card for each theme, then folds to one line', async ($, on) => {
+  engine(on, [])
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  for (const id of ['underwater', 'pond', 'night-sky', 'fireflies']) {
+    expect(await ui.find({ key: `card-${id}` })).toBeDefined()
+  }
+  expect(await ui.find({ type: 'Svg' })).toBeDefined()
+
+  await ui.press({ key: 'close' })
+  expect(await ui.find({ type: 'Svg' })).toBeUndefined()
+  expect((await ui.find({ key: 'open' }))?.text).toBe('Đổi hình nền')
+
+  await ui.press({ key: 'open' })
+  expect(await ui.find({ key: 'card-pond' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('the terminal picker shows ASCII previews, with no Svg', async ($, on) => {
+  engine(on, [])
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await ui.find({ type: 'Svg' })).toBeUndefined()
+  expect((await ui.find({ type: 'Text', text: /><\(\(\(\('>/ }))?.text).toContain("><(((('>")
+  await ui.unmount()
 })
