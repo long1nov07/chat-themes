@@ -1,5 +1,18 @@
 {
   "name": "chat-themes",
-  "owner": { "name": "long1nov07" },
-  "plugins": [{ "name": "chat-themes", "source": "./" }]
+  "owner": {
+    "name": "long1nov07"
+  },
+  "plugins": [
+    {
+      "name": "chat-themes",
+      "source": "./",
+      "description": "Chat themes bar above the prompt with animated ASCII backdrops: underwater, pond with goldfish, night sky and fireflies",
+      "version": "0.2.2",
+      "author": {
+        "name": "long1nov07"
+      }
+    }
+  ],
+  "description": "Animated ASCII chat backdrops for Claude"
 }

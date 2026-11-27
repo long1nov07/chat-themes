@@ -1,6 +1,9 @@
 {
   "name": "chat-themes",
-  "version": "0.2.1",
-  "description": "A Chat themes pane with animated ASCII backdrops: underwater, night sky and fireflies",
-  "types": "./types/index.d.ts"
+  "version": "0.2.2",
+  "description": "Chat themes bar above the prompt with animated ASCII backdrops: underwater, pond with goldfish, night sky and fireflies",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "long1nov07"
+  }
 }
